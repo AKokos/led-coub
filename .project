@@ -42,6 +42,11 @@
 			<locationURI>ECLIPSE_HOME/arduinoPlugin/packages/arduino/hardware/avr/1.8.2/variants/eightanaloginputs</locationURI>
 		</link>
 		<link>
+			<name>libraries/GyverButton</name>
+			<type>2</type>
+			<location>C:/Program Files (x86)/Arduino/libraries/GyverButton</location>
+		</link>
+		<link>
 			<name>libraries/GyverTimer</name>
 			<type>2</type>
 			<location>C:/Program Files (x86)/Arduino/libraries/GyverTimer</location>

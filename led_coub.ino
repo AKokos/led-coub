@@ -1,5 +1,6 @@
 #include "Arduino.h"
 #include <SPI.h>
+#include "GyverButton.h"
 //#include "GyverTimer.h"
 
 // constants for CUSTOMIZE
@@ -11,7 +12,8 @@
 #define BRIGHT_CONTROL_IN_PIN 5
 #define J1_X_PIN 0
 #define J1_Y_PIN 1
-
+#define J2_X_PIN 0
+#define J2_Y_PIN 1
 
 // digital pins
 #define LATCH_PIN 10 // (PIN_SPI_SS) set pin 12 of 74HC595 as output latch RCK
@@ -21,18 +23,21 @@
 #define LOADING_LED 3 // usually red
 #define RUNNING_LED 2 // usually green
 #define J1_BTN_PIN 9
+#define J2_BTN_PIN 9
 
 // modes
 #define RAIN 0
 #define PLANES 1
 #define FILL 2
+#define DOT 3
 
-#define LAST_MODE 2
+#define LAST_MODE 3
 
 // mode timeouts
 #define RAIN_TIME 260
 #define PLANES_TIME 220 *2
 #define FILL_TIME 8 *20
+#define DOT_TIME 300
 
 // service constants
 #define SWITCH_LAYER_DELAY 150
@@ -71,11 +76,14 @@ unsigned int cubes[2][CUBE_SIZE][CUBE_SIZE]; // array for color ( cubes[color][l
 unsigned int voxelsNum;
 unsigned int voxelsArray[CUBE_SIZE * CUBE_SIZE * CUBE_SIZE];
 unsigned int voxelIndex;
+byte x, y, z;
 
+GButton j1Button(J1_BTN_PIN);
+GButton j2Button(J2_BTN_PIN);
 
-byte currentColor = COLORR;
-byte currentMultiColor = COLOR3;
-byte currentMode = FILL;
+byte currentColor = COLOR2;
+byte currentMultiColor = COLOR2;
+byte currentMode = DOT;
 unsigned int timer = 0;
 unsigned int modeTimer;
 byte modeStage = 0;
@@ -87,6 +95,8 @@ void setup() {
 	// set "constants"
 	cubeIsBig = CUBE_SIZE > 8;
 	voxelsNum = CUBE_SIZE * CUBE_SIZE * CUBE_SIZE;
+
+	randomSeed(analogRead(4));
 
 	// prepare pins
 	pinMode(LOADING_LED, OUTPUT);
@@ -106,12 +116,13 @@ void loop() {
 
 	// TODO: check buttons (or joysticks)
 	// change mode
-	int modeShift = getJoystickMove(X_AXIS, J1_X_PIN);
+	// XXX: uncomment change mode&color by joystick1 when second joystick2 will arrived
+	/*int modeShift = getJoystickMove(X_AXIS, J1_X_PIN);
 	if (modeShift != 0) {
 		changeMode(currentMode + modeShift);
-	}
+	 }*/
 	// change color
-	int colorShift = getJoystickMove(Y_AXIS, J1_Y_PIN);
+	/*int colorShift = getJoystickMove(Y_AXIS, J1_Y_PIN);
 	if (colorShift != 0) {
 		currentColor += colorShift;
 		if (currentColor > 100) {
@@ -120,7 +131,7 @@ void loop() {
 			currentColor = COLOR1;
 		}
 		changeMode(currentMode); // reset current mode
-	}
+	 }*/
 	// -- change speed
 
 	// run current mode (change voxels state)
@@ -129,6 +140,7 @@ void loop() {
 		case RAIN: rain(); break;
 		case PLANES: planes(); break;
 		case FILL: fill(); break;
+		case DOT: dot(); break;
 		default: currentMode = RAIN;
 	}
 	// @formatter:on
@@ -157,6 +169,7 @@ void changeMode(byte mode) {
 		case RAIN: modeTimer = RAIN_TIME; break;
 		case PLANES: modeTimer = PLANES_TIME; break;
 		case FILL: modeTimer = FILL_TIME; break;
+		case DOT: modeTimer = DOT_TIME; break;
 		default: modeTimer = RAIN_TIME;
 	}
 	// @formatter:on
@@ -167,17 +180,6 @@ void finishLoading() {
 	digitalWrite(LOADING_LED, LOW);
 	digitalWrite(RUNNING_LED, HIGH);
 	loading = false;
-}
-
-int getJoystickMove(byte axis, byte axisPin) {
-	byte invert = axis == X_AXIS ? J_INVERT_X : J_INVERT_Y;
-	int value = analogRead(axisPin);
-	if (value > J_HIGH) {
-		return invert ? -1 : 1;
-	} else if (value < J_LOW) {
-		return invert ? 1 : -1;
-	}
-	return 0;
 }
 
 ///////// RAIN MODE /////////////////
@@ -353,6 +355,52 @@ void fill() {
 	}
 }
 
+///////// DOT MODE //////////////////
+
+void dot() {
+	if (loading) {
+		clear();
+		if (currentColor == COLORM) {
+			nextMultiColor();
+		}
+		//	randomSeed(millis());
+		x = random(0, CUBE_SIZE);
+		y = random(0, CUBE_SIZE);
+		z = random(0, CUBE_SIZE);
+		setVoxel(x, y, z);
+		modeStage = 0;
+		timer = 0;
+		finishLoading();
+	}
+
+	// XXX: temporary variant
+	// TODO: use Y-axis of joystick 2
+	j2Button.tick();
+	if (j2Button.isDouble()) {
+		clearVoxel(x, y, z);
+		z = shiftCoordinate(z, 1);
+		setVoxel(x, y, z);
+	} else if (j2Button.isSingle()) {
+		clearVoxel(x, y, z);
+		z = shiftCoordinate(z, -1);
+		setVoxel(x, y, z);
+	}
+
+	// check timer
+	timer++;
+	if (timer < modeTimer) {
+		// not time to change
+		return;
+	}
+
+	// draw changes
+	timer = 0;
+	clearVoxel(x, y, z);
+	x = shiftCoordinate(x, getJoystickMove(X_AXIS, J2_X_PIN));
+	y = shiftCoordinate(y, getJoystickMove(Y_AXIS, J2_Y_PIN));
+	setVoxel(x, y, z);
+}
+
 ///////// COMMON METHODS ////////////
 
 void setVoxel(byte x, byte y, byte z) {
@@ -379,6 +427,17 @@ void setVoxel(byte x, byte y, byte z, byte color) {
 void clearVoxel(byte x, byte y, byte z) {
 	cubes[COLOR1][y][z] &= (0x01 << x) ^ 0xffff;
 	cubes[COLOR2][y][z] &= (0x01 << x) ^ 0xffff;
+}
+
+byte shiftCoordinate(byte coord, char delta) {
+	char res = coord + delta;
+	if (res < 0) {
+		return 0;
+	}
+	if (res > CUBE_SIZE - 1) {
+		return CUBE_SIZE - 1;
+	}
+	return res;
 }
 
 void changeCurrentArrayVoxel(bool switchOn) {
@@ -462,6 +521,18 @@ void shift(byte direction) {
 			}
 			break;
 	}
+}
+
+int getJoystickMove(byte axis, byte axisPin) {
+	byte invert = axis == X_AXIS ? J_INVERT_X : J_INVERT_Y;
+	int value = analogRead(axisPin);
+	if (value > J_HIGH) {
+		return invert ? -1 : 1;
+		return invert ? -1 : 1;
+	} else if (value < J_LOW) {
+		return invert ? 1 : -1;
+	}
+	return 0;
 }
 
 // clear cubes data
