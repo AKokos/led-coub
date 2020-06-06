@@ -21,10 +21,14 @@
 // modes
 #define RAIN 0
 #define PLANES 1
+#define FILL 2
+
+#define LAST_MODE 2
 
 // mode timeouts
 #define RAIN_TIME 260
 #define PLANES_TIME 220 *2
+#define FILL_TIME 8 *20
 
 // service constants
 #define SWITCH_LAYER_DELAY 150
@@ -53,12 +57,16 @@ byte brightnessLevel;
 bool cubeIsBig;
 unsigned int cubes[2][CUBE_SIZE][CUBE_SIZE]; // array for color ( cubes[color][lay][row] =  columns in row )
 unsigned int voxelsNum;
+unsigned int voxelsArray[CUBE_SIZE * CUBE_SIZE * CUBE_SIZE];
+unsigned int voxelIndex;
 
-byte currentColor = COLOR2;
-byte currentMultiColor = COLOR1;
-byte currentMode = PLANES;
+
+byte currentColor = COLORR;
+byte currentMultiColor = COLOR3;
+byte currentMode = FILL;
 unsigned int timer = 0;
 unsigned int modeTimer;
+byte modeStage = 0;
 bool loading = true;
 
 void setup() {
@@ -94,6 +102,7 @@ void loop() {
 	switch (currentMode) {
 		case RAIN: rain(); break;
 		case PLANES: planes(); break;
+		case FILL: fill(); break;
 		default: currentMode = RAIN;
 	}
 	// @formatter:on
@@ -108,12 +117,14 @@ void changeMode(byte mode) {
 	clear();
 	loading = true;
 	timer = 0;
+	modeStage = 0;
 	randomSeed(millis());
 	currentMode = mode;
 	// @formatter:off
 	switch (currentMode) {
 		case RAIN: modeTimer = RAIN_TIME; break;
 		case PLANES: modeTimer = PLANES_TIME; break;
+		case FILL: modeTimer = FILL_TIME; break;
 		default: modeTimer = RAIN_TIME;
 	}
 	// @formatter:on
@@ -154,7 +165,6 @@ void rain() {
 
 byte planeDirection;
 byte planePosition;
-byte planeLooped;
 
 void planes() {
 	if (loading) {
@@ -176,7 +186,7 @@ void planes() {
 			planeDirection++; // inc by 1 set NEG direction
 		}
 		timer = 0;
-		planeLooped = 0;
+		modeStage = 0;
 		finishLoading();
 	}
 
@@ -187,31 +197,33 @@ void planes() {
 		return;
 	}
 
-	// draw changes
-	if (planeLooped == 2) {
+	// restart mode
+	if (modeStage == 2) {
 		loading = true;
 		return;
 	}
+
+	// draw changes
 	timer = 0;
 	shift(planeDirection);
 	if (planeDirection % 2 == 0) {
 		planePosition++;
 		if (planePosition == CUBE_SIZE - 1) {
-			if (planeLooped == 1) {
-				planeLooped++;
+			if (modeStage == 1) {
+				modeStage++;
 			} else {
 				planeDirection++;
-				planeLooped++;
+				modeStage++;
 			}
 		}
 	} else {
 		planePosition--;
 		if (planePosition == 0) {
-			if (planeLooped == 1) {
-				planeLooped++;
+			if (modeStage == 1) {
+				modeStage++;
 			} else {
 				planeDirection--;
-				planeLooped++;
+				modeStage++;
 			}
 		}
 	}
@@ -227,6 +239,73 @@ void setPlane(byte axis, byte position) {
 			} else if (axis == Z_AXIS) {
 				setVoxel(i, j, position);
 			}
+		}
+	}
+}
+
+///////// FILL MODE /////////////////
+
+void fill() {
+	if (loading) {
+		clear();
+		if (currentColor == COLORM) {
+			nextMultiColor();
+		}
+		randomSeed(millis());
+		// fill array with order num
+		for (voxelIndex = 0; voxelIndex < voxelsNum; voxelIndex++) {
+			voxelsArray[voxelIndex] = voxelIndex;
+		}
+		// random voxels array
+		unsigned int randomIndex;
+		for (voxelIndex = 0; voxelIndex < voxelsNum; voxelIndex++) {
+			// switch values
+			randomIndex = random(0, voxelsNum);
+			if (randomIndex != voxelIndex) {
+				voxelsArray[voxelIndex] += voxelsArray[randomIndex];
+				voxelsArray[randomIndex] = voxelsArray[voxelIndex]
+						- voxelsArray[randomIndex];
+				voxelsArray[voxelIndex] -= voxelsArray[randomIndex];
+			}
+		}
+		voxelIndex = 0;
+		modeStage = 0;
+		timer = 0;
+		finishLoading();
+	}
+
+	// check timer
+	timer++;
+	if (timer < modeTimer) {
+		// not time to change
+		return;
+	}
+
+	// restart mode
+	if (modeStage == 2) {
+		loading = true;
+		return;
+	}
+
+	// draw changes
+	timer = 0;
+	if (modeStage == 0) {
+		// filling
+		changeCurrentArrayVoxel(true);
+		if (voxelIndex == voxelsNum - 1) {
+			// filling finished
+			modeStage = 1;
+		} else {
+			voxelIndex++;
+		}
+	} else {
+		// filling out
+		changeCurrentArrayVoxel(false);
+		if (voxelIndex == 0) {
+			// filling out finished - need reloading
+			modeStage = 2;
+		} else {
+			voxelIndex--;
 		}
 	}
 }
@@ -252,6 +331,24 @@ void setVoxel(byte x, byte y, byte z, byte color) {
 	if (color == COLOR2 || color == COLOR3) {
 		cubes[COLOR2][y][z] |= (0x01 << x);
 	}
+}
+
+void clearVoxel(byte x, byte y, byte z) {
+	cubes[COLOR1][y][z] &= (0x01 << x) ^ 0xffff;
+	cubes[COLOR2][y][z] &= (0x01 << x) ^ 0xffff;
+}
+
+void changeCurrentArrayVoxel(bool switchOn) {
+	// @formatter:off
+	byte z = voxelsArray[voxelIndex] / (CUBE_SIZE * CUBE_SIZE);
+	byte y = (voxelsArray[voxelIndex] % (CUBE_SIZE * CUBE_SIZE)) / CUBE_SIZE;
+	byte x = (voxelsArray[voxelIndex] % (CUBE_SIZE * CUBE_SIZE)) % CUBE_SIZE;
+	if (switchOn) {
+		setVoxel(x, y, z);
+	} else {
+		clearVoxel(x, y, z);
+	}
+	// @formatter:on
 }
 
 void shift(byte direction) {
