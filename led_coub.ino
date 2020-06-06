@@ -107,7 +107,17 @@ void loop() {
 	if (modeShift != 0) {
 		changeMode(currentMode + modeShift);
 	}
-	// -- change color
+	// change color
+	int colorShift = getJoystickMove(Y_AXIS, J1_Y_PIN);
+	if (colorShift != 0) {
+		currentColor += colorShift;
+		if (currentColor > 100) {
+			currentColor = COLORR;
+		} else if (currentColor > COLORR) {
+			currentColor = COLOR1;
+		}
+		changeMode(currentMode); // reset current mode
+	}
 	// -- change speed
 
 	// run current mode (change voxels state)
