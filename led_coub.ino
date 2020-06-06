@@ -9,6 +9,9 @@
 
 // analog pins
 #define BRIGHT_CONTROL_IN_PIN 5
+#define J1_X_PIN 0
+#define J1_Y_PIN 1
+
 
 // digital pins
 #define LATCH_PIN 10 // (PIN_SPI_SS) set pin 12 of 74HC595 as output latch RCK
@@ -17,6 +20,7 @@
 #define BRIGHT_CONTROL_OUT_PIN 5 // set pin 13 (OE) of 74HC595 for control brightness
 #define LOADING_LED 3 // usually red
 #define RUNNING_LED 2 // usually green
+#define J1_BTN_PIN 9
 
 // modes
 #define RAIN 0
@@ -51,6 +55,11 @@
 #define Y_NEG 3
 #define Z_POS 4
 #define Z_NEG 5
+
+#define J_LOW 300
+#define J_HIGH 800
+#define J_INVERT_X 1 // invert x-axis of joysticks
+#define J_INVERT_Y 0 // invert y-axis of joysticks
 
 // service vars
 byte brightnessLevel;
@@ -93,7 +102,11 @@ void loop() {
 	analogWrite(BRIGHT_CONTROL_OUT_PIN, brightnessLevel);
 
 	// TODO: check buttons (or joysticks)
-	// -- change mode
+	// change mode
+	int modeShift = getJoystickMove(X_AXIS, J1_X_PIN);
+	if (modeShift != 0) {
+		changeMode(currentMode + modeShift);
+	}
 	// -- change color
 	// -- change speed
 
@@ -119,7 +132,13 @@ void changeMode(byte mode) {
 	timer = 0;
 	modeStage = 0;
 	randomSeed(millis());
-	currentMode = mode;
+	if (mode > 100) { // in byte -1 = 255
+		currentMode = LAST_MODE;
+	} else if (mode > LAST_MODE) {
+		currentMode = 0;
+	} else {
+		currentMode = mode;
+	}
 	// @formatter:off
 	switch (currentMode) {
 		case RAIN: modeTimer = RAIN_TIME; break;
@@ -135,6 +154,17 @@ void finishLoading() {
 	digitalWrite(LOADING_LED, LOW);
 	digitalWrite(RUNNING_LED, HIGH);
 	loading = false;
+}
+
+int getJoystickMove(byte axis, byte axisPin) {
+	byte invert = axis == X_AXIS ? J_INVERT_X : J_INVERT_Y;
+	int value = analogRead(axisPin);
+	if (value > J_HIGH) {
+		return invert ? -1 : 1;
+	} else if (value < J_LOW) {
+		return invert ? 1 : -1;
+	}
+	return 0;
 }
 
 ///////// RAIN MODE /////////////////
