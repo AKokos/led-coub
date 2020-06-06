@@ -55,6 +55,9 @@
 #define Y_NEG 3
 #define Z_POS 4
 #define Z_NEG 5
+#define INVERT_X 0
+#define INVERT_Y 0
+#define INVERT_Z 1
 
 #define J_LOW 300
 #define J_HIGH 800
@@ -485,7 +488,6 @@ void nextMultiColor() {
 }
 
 void render() {
-	// TODO: invert value if needed (check gyver's variant)
 	short currentValue;
 	short transRegValue = 0x00;
 	short bits[CUBE_SIZE];
@@ -497,7 +499,7 @@ void render() {
 	for (byte lay = 0; lay < CUBE_SIZE; lay++) {
 		digitalWrite(LATCH_PIN, LOW);
 		// choose layer
-		transRegValue = 0x01 << lay;
+		transRegValue = 0x01 << (INVERT_Y ? CUBE_SIZE - 1 - lay : lay);
 		if (cubeIsBig) {
 			// has 2 registers for layers
 			SPI.transfer(transRegValue >> 8);
@@ -511,12 +513,12 @@ void render() {
 		currentRegisterValue = 0x00;
 		for (byte cube = 0; cube < 2; cube++) {
 			for (byte row = 0; row < CUBE_SIZE; row++) {
-				currentValue = cubes[cube][lay][row];
+				currentValue = cubes[cube][lay][INVERT_Z ? CUBE_SIZE - 1 - row : row];
 
 				// render columns in row
 				// - fill operative bits array with value bits
 				for (byte i = 0; i < CUBE_SIZE; i++) {
-					bits[i] = (currentValue & 0x01) << BIT_DEPTH - 1;
+					bits[INVERT_X ? CUBE_SIZE - 1 - i : i] = (currentValue & 0x01) << BIT_DEPTH - 1;
 					currentValue >>= 1;
 				}
 				// - fill value for register
