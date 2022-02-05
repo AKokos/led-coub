@@ -29,9 +29,9 @@
 #define RAIN 0
 #define PLANES 1
 #define FILL 2
-#define DOT 3
 
-#define LAST_MODE 3
+#define LAST_MODE 2
+#define DEV_MODE_ON true // single dot moved by joystick
 
 // mode timeouts
 #define RAIN_TIME 260
@@ -81,9 +81,9 @@ byte x, y, z;
 GButton j1Button(J1_BTN_PIN);
 GButton j2Button(J2_BTN_PIN);
 
-byte currentColor = COLOR2;
+byte currentColor = COLOR1;
 byte currentMultiColor = COLOR2;
-byte currentMode = DOT;
+byte currentMode = RAIN;
 unsigned int timer = 0;
 unsigned int modeTimer;
 byte modeStage = 0;
@@ -114,35 +114,38 @@ void loop() {
 	brightnessLevel = map(analogRead(BRIGHT_CONTROL_IN_PIN), 0, 1023, 0, 255);
 	analogWrite(BRIGHT_CONTROL_OUT_PIN, brightnessLevel);
 
-	// TODO: check buttons (or joysticks)
-	// change mode
-	// XXX: uncomment change mode&color by joystick1 when second joystick2 will arrived
-	/*int modeShift = getJoystickMove(X_AXIS, J1_X_PIN);
-	if (modeShift != 0) {
-		changeMode(currentMode + modeShift);
-	 }*/
-	// change color
-	/*int colorShift = getJoystickMove(Y_AXIS, J1_Y_PIN);
-	if (colorShift != 0) {
-		currentColor += colorShift;
-		if (currentColor > 100) {
-			currentColor = COLORR;
-		} else if (currentColor > COLORR) {
-			currentColor = COLOR1;
+	if (!DEV_MODE_ON) {
+		// TODO: check buttons (or joysticks)
+		// change mode
+		// XXX: uncomment change mode&color by joystick1 when second joystick2 will arrived
+		int modeShift = getJoystickMove(X_AXIS, J1_X_PIN);
+		if (modeShift != 0) {
+			changeMode(currentMode + modeShift);
 		}
-		changeMode(currentMode); // reset current mode
-	 }*/
-	// -- change speed
-
-	// run current mode (change voxels state)
-	// @formatter:off
-	switch (currentMode) {
-		case RAIN: rain(); break;
-		case PLANES: planes(); break;
-		case FILL: fill(); break;
-		case DOT: dot(); break;
-		default: currentMode = RAIN;
+		// change color
+		int colorShift = getJoystickMove(Y_AXIS, J1_Y_PIN);
+		if (colorShift != 0) {
+			currentColor += colorShift;
+			if (currentColor > 100) {
+				currentColor = COLORR;
+			} else if (currentColor > COLORR) {
+				currentColor = COLOR1;
+			}
+			changeMode(currentMode); // reset current mode
+		}
+		// -- change speed
+		// run current mode (change voxels state)
+		// @formatter:off
+		switch (currentMode) {
+			case RAIN: rain(); break;
+			case PLANES: planes(); break;
+			case FILL: fill(); break;
+			default: currentMode = RAIN;
+		}
+	} else {
+		dot();
 	}
+
 	// @formatter:on
 
 	render();
@@ -169,7 +172,6 @@ void changeMode(byte mode) {
 		case RAIN: modeTimer = RAIN_TIME; break;
 		case PLANES: modeTimer = PLANES_TIME; break;
 		case FILL: modeTimer = FILL_TIME; break;
-		case DOT: modeTimer = DOT_TIME; break;
 		default: modeTimer = RAIN_TIME;
 	}
 	// @formatter:on
