@@ -40,7 +40,7 @@
 #define DOT_TIME 300
 
 // service constants
-#define SWITCH_LAYER_DELAY 150
+#define SWITCH_LAYER_DELAY 50
 
 // colors
 #define COLOR1 0
@@ -568,6 +568,7 @@ void render() {
 	short currentRegisterValue;
 
 	for (byte lay = 0; lay < CUBE_SIZE; lay++) {
+		blankCube();
 		digitalWrite(LATCH_PIN, LOW);
 		// choose layer
 		transRegValue = 0x01 << (INVERT_Y ? CUBE_SIZE - 1 - lay : lay);
@@ -624,8 +625,18 @@ void render() {
 	}
 
 	// вырубаем всё
+	blankCube();
+}
+
+// used for clean redraw
+void blankCube() {
 	digitalWrite(LATCH_PIN, LOW);
-	SPI.transfer(0x00);
+	if (cubeIsBig) {
+		SPI.transfer(0x00);
+	}
+	for (byte i = 0; i < DATA_REGISTERS_NUM + 1; i++) {
+		SPI.transfer(0x00);
+	}
 	digitalWrite(LATCH_PIN, HIGH);
 }
 
