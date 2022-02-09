@@ -29,15 +29,16 @@
 #define RAIN 0
 #define PLANES 1
 #define FILL 2
+#define PLAGUE 3
 
-#define LAST_MODE 2
-#define DEV_MODE_ON true // single dot moved by joystick
+#define LAST_MODE 3
+#define DEV_MODE_ON false // single dot moved by joystick
 
 // mode timeouts
 #define RAIN_TIME 260
 #define PLANES_TIME 220 *2
 #define FILL_TIME 8 *20
-#define DOT_TIME 300
+#define PLAGUE_TIME 8 *20
 
 // service constants
 #define SWITCH_LAYER_DELAY 50
@@ -88,6 +89,10 @@ unsigned int timer = 0;
 unsigned int modeTimer;
 byte modeStage = 0;
 bool loading = true;
+
+// vars for common use
+unsigned int workNum;
+unsigned int i, maxNum;
 
 void setup() {
 //	Serial.begin(9600);
@@ -140,6 +145,7 @@ void loop() {
 			case RAIN: rain(); break;
 			case PLANES: planes(); break;
 			case FILL: fill(); break;
+			case PLAGUE: plague(); break;
 			default: currentMode = RAIN;
 		}
 	} else {
@@ -172,6 +178,7 @@ void changeMode(byte mode) {
 		case RAIN: modeTimer = RAIN_TIME; break;
 		case PLANES: modeTimer = PLANES_TIME; break;
 		case FILL: modeTimer = FILL_TIME; break;
+		case PLAGUE: modeTimer = PLAGUE_TIME; break;
 		default: modeTimer = RAIN_TIME;
 	}
 	// @formatter:on
@@ -202,6 +209,7 @@ void rain() {
 	// draw changes
 	timer = 0;
 	shift(Y_NEG);
+	// TODO: set max random value depended on cube size
 	byte numDrops = random(0, 5);
 	for (byte i = 0; i < numDrops; i++) {
 		setVoxel(random(0, CUBE_SIZE), CUBE_SIZE - 1, random(0, CUBE_SIZE));
@@ -357,6 +365,95 @@ void fill() {
 	}
 }
 
+///////// PLAGUE MODE //////////////////
+
+void plague() {
+	if (loading) {
+		clear();
+		if (currentColor == COLORM) {
+			nextMultiColor();
+		}
+		randomSeed(millis());
+		voxelsArray[0] = random(0, voxelsNum);
+		workNum = 1;
+
+		voxelIndex = 0;
+		modeStage = 0;
+		timer = 0;
+		finishLoading();
+	}
+
+	// check timer
+	timer++;
+	if (timer < modeTimer) {
+		return;
+	}
+
+	if (workNum == 0) {
+		if (modeStage == 0) {
+			// turn into light off mode
+			modeStage = 1;
+			voxelsArray[0] = random(0, voxelsNum);
+			workNum = 1;
+		} else {
+			// restart
+			loading = true;
+			return;
+		}
+	}
+
+	// make and draw changes
+	timer = 0;
+	// choose random voxel
+	voxelIndex = random(0, workNum < CUBE_SIZE ? workNum : CUBE_SIZE);
+	unsigned int currentValue = voxelsArray[voxelIndex];
+
+	// set it on/off
+	changeCurrentArrayVoxel(modeStage == 0);
+
+	// get it coordinates
+	x = getX(currentValue);
+	y = getY(currentValue);
+	z = getZ(currentValue);
+
+	// remove it from array
+	maxNum = workNum;
+	i = 0;
+	for (voxelIndex = 0; voxelIndex < maxNum; voxelIndex++) {
+		if (voxelsArray[voxelIndex] == currentValue) {
+			workNum--;
+		} else {
+			voxelsArray[i] = voxelsArray[voxelIndex];
+			i++;
+		}
+	}
+
+	// find free neighbors and put it on array
+	if (x != 0 && !isPlagueVoxelActive(x - 1, y, z)) {
+		voxelsArray[workNum++] = getArrayVoxelValue(x - 1, y, z);
+	}
+	if (x != CUBE_SIZE - 1 && !isPlagueVoxelActive(x + 1, y, z)) {
+		voxelsArray[workNum++] = getArrayVoxelValue(x + 1, y, z);
+	}
+	if (y != 0 && !isPlagueVoxelActive(x, y - 1, z)) {
+		voxelsArray[workNum++] = getArrayVoxelValue(x, y - 1, z);
+	}
+	if (y != CUBE_SIZE - 1 && !isPlagueVoxelActive(x, y + 1, z)) {
+		voxelsArray[workNum++] = getArrayVoxelValue(x, y + 1, z);
+	}
+	if (z != 0 && !isPlagueVoxelActive(x, y, z - 1)) {
+		voxelsArray[workNum++] = getArrayVoxelValue(x, y, z - 1);
+	}
+	if (z != CUBE_SIZE - 1 && !isPlagueVoxelActive(x, y, z + 1)) {
+		voxelsArray[workNum++] = getArrayVoxelValue(x, y, z + 1);
+	}
+}
+
+bool isPlagueVoxelActive(byte x, byte y, byte z) {
+	bool res = isVoxelOn(x, y, z);
+	return modeStage == 0 ? res : !res;
+}
+
 ///////// DOT MODE //////////////////
 
 void dot() {
@@ -431,6 +528,10 @@ void clearVoxel(byte x, byte y, byte z) {
 	cubes[COLOR2][y][z] &= (0x01 << x) ^ 0xffff;
 }
 
+bool isVoxelOn(byte x, byte y, byte z) {
+	return (cubes[COLOR1][y][z] & (0x01 << x)) || (cubes[COLOR2][y][z] & (0x01 << x));
+}
+
 byte shiftCoordinate(byte coord, char delta) {
 	char res = coord + delta;
 	if (res < 0) {
@@ -444,15 +545,29 @@ byte shiftCoordinate(byte coord, char delta) {
 
 void changeCurrentArrayVoxel(bool switchOn) {
 	// @formatter:off
-	byte z = voxelsArray[voxelIndex] / (CUBE_SIZE * CUBE_SIZE);
-	byte y = (voxelsArray[voxelIndex] % (CUBE_SIZE * CUBE_SIZE)) / CUBE_SIZE;
-	byte x = (voxelsArray[voxelIndex] % (CUBE_SIZE * CUBE_SIZE)) % CUBE_SIZE;
+	byte z = getZ(voxelsArray[voxelIndex]);
+	byte y = getY(voxelsArray[voxelIndex]);
+	byte x = getX(voxelsArray[voxelIndex]);
 	if (switchOn) {
 		setVoxel(x, y, z);
 	} else {
 		clearVoxel(x, y, z);
 	}
 	// @formatter:on
+}
+
+byte getX(unsigned int value) {
+	return (value % (CUBE_SIZE * CUBE_SIZE)) % CUBE_SIZE;
+}
+byte getY(unsigned int value) {
+	return (value % (CUBE_SIZE * CUBE_SIZE)) / CUBE_SIZE;
+}
+byte getZ(unsigned int value) {
+	return value / (CUBE_SIZE * CUBE_SIZE);
+}
+
+unsigned int getArrayVoxelValue(byte x, byte y, byte z) {
+	return x + y * CUBE_SIZE + z * CUBE_SIZE * CUBE_SIZE;
 }
 
 void shift(byte direction) {
