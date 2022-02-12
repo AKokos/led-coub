@@ -12,19 +12,19 @@
 #define BRIGHT_CONTROL_IN_PIN 5
 #define J1_X_PIN 0
 #define J1_Y_PIN 1
-#define J2_X_PIN 0
-#define J2_Y_PIN 1
+#define J2_X_PIN 2
+#define J2_Y_PIN 3
 
 // digital pins
 #define LATCH_PIN 10 // (PIN_SPI_SS) set pin 12 of 74HC595 as output latch RCK
 #define DATA_PIN  11 // (PIN_SPI_MOSI) set pin 14 of 74HC595 as data input pin SI
 #define CLOCK_PIN 13 // (PIN_SPI_SCK) set pin 11 of 74HC595 as clock pin SCK
 #define BRIGHT_CONTROL_OUT_PIN 5 // set pin 13 (OE) of 74HC595 for control brightness
-#define LOADING_LED 3 // usually red
 #define RUNNING_LED 2 // usually green
+#define LOADING_LED 3 // usually red
 #define SAFETY_TRANSISTOR_PIN 6
 #define J1_BTN_PIN 9
-#define J2_BTN_PIN 9
+#define J2_BTN_PIN 8
 
 // modes
 #define RAIN 0
@@ -43,6 +43,8 @@
 
 // service constants
 #define SWITCH_LAYER_DELAY 50
+#define CHANGE_SPEED_STEP 10
+#define CHANGE_SPEED_CHECK_TIMEOUT 200
 
 // colors
 #define COLOR1 0
@@ -87,6 +89,7 @@ byte currentColor = COLOR1;
 byte currentMultiColor = COLOR2;
 byte currentMode = RAIN;
 unsigned int timer = 0;
+unsigned int speedChangeTimer = 0;
 unsigned int modeTimer;
 byte modeStage = 0;
 bool loading = true;
@@ -199,6 +202,7 @@ void finishLoading() {
 ///////// RAIN MODE /////////////////
 
 void rain() {
+	checkSpeedChange();
 	if (loading) {
 		clear();
 		finishLoading();
@@ -227,6 +231,7 @@ byte planeDirection;
 byte planePosition;
 
 void planes() {
+	checkSpeedChange();
 	if (loading) {
 		clear();
 		if (currentColor == COLORM) {
@@ -306,6 +311,7 @@ void setPlane(byte axis, byte position) {
 ///////// FILL MODE /////////////////
 
 void fill() {
+	checkSpeedChange();
 	if (loading) {
 		clear();
 		if (currentColor == COLORM) {
@@ -373,6 +379,7 @@ void fill() {
 ///////// PLAGUE MODE //////////////////
 
 void plague() {
+	checkSpeedChange();
 	if (loading) {
 		clear();
 		if (currentColor == COLORM) {
@@ -760,6 +767,20 @@ void blankCube() {
 		SPI.transfer(0x00);
 	}
 	digitalWrite(LATCH_PIN, HIGH);
+
+void checkSpeedChange() {
+	speedChangeTimer++;
+	if (speedChangeTimer < CHANGE_SPEED_CHECK_TIMEOUT) {
+		// not time to change
+		return;
+	}
+	speedChangeTimer = 0;
+	int j2MoveX = getJoystickMove(X_AXIS, J2_X_PIN);
+	if (j2MoveX > 0 && modeTimer > CHANGE_SPEED_STEP) {
+		modeTimer -= CHANGE_SPEED_STEP;
+	} else if (j2MoveX < 0 && modeTimer < 1000) {
+		modeTimer += CHANGE_SPEED_STEP;
+	}
 }
 
 /*void printBits(char prefix[], byte myByte, short delim, boolean newLine) {
