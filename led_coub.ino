@@ -116,7 +116,7 @@ void setup() {
 	SPI.beginTransaction(SPISettings(8000000, MSBFIRST, SPI_MODE0));
 
 	blankCube();
-	setPin(SAFETY_TRANSISTOR_PIN, HIGH);
+	digitalWrite(SAFETY_TRANSISTOR_PIN, HIGH);
 
 	changeMode(currentMode);
 }
