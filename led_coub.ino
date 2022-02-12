@@ -22,6 +22,7 @@
 #define BRIGHT_CONTROL_OUT_PIN 5 // set pin 13 (OE) of 74HC595 for control brightness
 #define LOADING_LED 3 // usually red
 #define RUNNING_LED 2 // usually green
+#define SAFETY_TRANSISTOR_PIN 6
 #define J1_BTN_PIN 9
 #define J2_BTN_PIN 9
 
@@ -107,8 +108,12 @@ void setup() {
 	pinMode(LOADING_LED, OUTPUT);
 	pinMode(RUNNING_LED, OUTPUT);
 	pinMode(LATCH_PIN, OUTPUT);
+	pinMode(SAFETY_TRANSISTOR_PIN, OUTPUT);
 	SPI.begin();
 	SPI.beginTransaction(SPISettings(8000000, MSBFIRST, SPI_MODE0));
+
+	blankCube();
+	setPin(SAFETY_TRANSISTOR_PIN, HIGH);
 
 	changeMode(currentMode);
 }
