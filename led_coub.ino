@@ -22,6 +22,7 @@
 #define BRIGHT_CONTROL_OUT_PIN 5 // set pin 13 (OE) of 74HC595 for control brightness
 #define RUNNING_LED 2 // usually green
 #define LOADING_LED 3 // usually red
+#define SELF_BTN_PIN 4
 #define SAFETY_TRANSISTOR_PIN 6
 #define J1_BTN_PIN 9
 #define J2_BTN_PIN 8
@@ -33,13 +34,15 @@
 #define PLAGUE 3
 
 #define LAST_MODE 3
-#define DEV_MODE_ON false // single dot moved by joystick
 
 // mode timeouts
 #define RAIN_TIME 260
 #define PLANES_TIME 220 *2
 #define FILL_TIME 8 *20
 #define PLAGUE_TIME 8 *20
+
+// dev mode timeouts
+#define DOT_TIME 300
 
 // service constants
 #define SWITCH_LAYER_DELAY 50
@@ -84,6 +87,7 @@ byte x, y, z;
 
 GButton j1Button(J1_BTN_PIN);
 GButton j2Button(J2_BTN_PIN);
+GButton selfButton(SELF_BTN_PIN);
 
 byte currentColor = COLOR1;
 byte currentMultiColor = COLOR2;
@@ -93,6 +97,7 @@ unsigned int speedChangeTimer = 0;
 unsigned int modeTimer;
 byte modeStage = 0;
 bool loading = true;
+bool devModeIsOn = false;
 
 // vars for common use
 unsigned int workNum;
@@ -116,9 +121,16 @@ void setup() {
 	SPI.beginTransaction(SPISettings(8000000, MSBFIRST, SPI_MODE0));
 
 	blankCube();
+	// turn on leds (open connect to GND)
 	digitalWrite(SAFETY_TRANSISTOR_PIN, HIGH);
 
-	changeMode(currentMode);
+	// if btn pressed on boot - turn on dev mode
+	if (digitalRead(SELF_BTN_PIN) == 0) {
+		devModeIsOn = true;
+		modeTimer = DOT_TIME;
+	} else {
+		changeMode(currentMode);
+	}
 }
 
 
@@ -127,7 +139,7 @@ void loop() {
 	brightnessLevel = map(analogRead(BRIGHT_CONTROL_IN_PIN), 0, 1023, 0, 255);
 	analogWrite(BRIGHT_CONTROL_OUT_PIN, brightnessLevel);
 
-	if (!DEV_MODE_ON) {
+	if (!devModeIsOn) {
 		// TODO: check buttons (or joysticks)
 		// change mode
 		// XXX: uncomment change mode&color by joystick1 when second joystick2 will arrived
@@ -138,15 +150,12 @@ void loop() {
 		// change color
 		int colorShift = getJoystickMove(Y_AXIS, J1_Y_PIN);
 		if (colorShift != 0) {
-			currentColor += colorShift;
-			if (currentColor > 100) {
-				currentColor = COLORR;
-			} else if (currentColor > COLORR) {
-				currentColor = COLOR1;
-			}
+			changeColor(colorShift);
 			changeMode(currentMode); // reset current mode
 		}
+
 		// -- change speed
+
 		// run current mode (change voxels state)
 		// @formatter:off
 		switch (currentMode) {
@@ -191,6 +200,19 @@ void changeMode(byte mode) {
 	}
 	// @formatter:on
 	delay(500);
+}
+
+void changeColor(int colorShift) {
+	changeColor(colorShift, COLORR);
+}
+
+void changeColor(int colorShift, byte maxColor) {
+	currentColor += colorShift;
+	if (currentColor > 100) {
+		currentColor = maxColor;
+	} else if (currentColor > maxColor) {
+		currentColor = COLOR1;
+	}
 }
 
 void finishLoading() {
@@ -484,17 +506,10 @@ void dot() {
 		finishLoading();
 	}
 
-	// XXX: temporary variant
-	// TODO: use Y-axis of joystick 2
-	j2Button.tick();
-	if (j2Button.isDouble()) {
-		clearVoxel(x, y, z);
-		z = shiftCoordinate(z, 1);
-		setVoxel(x, y, z);
-	} else if (j2Button.isSingle()) {
-		clearVoxel(x, y, z);
-		z = shiftCoordinate(z, -1);
-		setVoxel(x, y, z);
+	// change color by clicking on joystick 1
+	j1Button.tick();
+	if (j1Button.isSingle()) {
+		changeColor(1, COLOR3);
 	}
 
 	// check timer
@@ -507,8 +522,9 @@ void dot() {
 	// draw changes
 	timer = 0;
 	clearVoxel(x, y, z);
-	x = shiftCoordinate(x, getJoystickMove(X_AXIS, J2_X_PIN));
-	y = shiftCoordinate(y, getJoystickMove(Y_AXIS, J2_Y_PIN));
+	x = shiftCoordinate(x, getJoystickMove(X_AXIS, J1_X_PIN));
+	y = shiftCoordinate(y, getJoystickMove(Y_AXIS, J1_Y_PIN));
+	z = shiftCoordinate(z, getJoystickMove(Y_AXIS, J2_Y_PIN));
 	setVoxel(x, y, z);
 }
 
@@ -697,7 +713,8 @@ void render() {
 	short currentRegisterValue;
 
 	for (byte lay = 0; lay < CUBE_SIZE; lay++) {
-		blankCube();
+		// uncomment next if parasite lights exists
+//		blankCube();
 		digitalWrite(LATCH_PIN, LOW);
 		// choose layer
 		transRegValue = 0x01 << (INVERT_Y ? CUBE_SIZE - 1 - lay : lay);
@@ -767,6 +784,7 @@ void blankCube() {
 		SPI.transfer(0x00);
 	}
 	digitalWrite(LATCH_PIN, HIGH);
+}
 
 void checkSpeedChange() {
 	speedChangeTimer++;
