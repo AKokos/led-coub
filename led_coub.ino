@@ -714,7 +714,7 @@ void render() {
 
 	for (byte lay = 0; lay < CUBE_SIZE; lay++) {
 		// uncomment next if parasite lights exists
-//		blankCube();
+		blankCube();
 		digitalWrite(LATCH_PIN, LOW);
 		// choose layer
 		transRegValue = 0x01 << (INVERT_Y ? CUBE_SIZE - 1 - lay : lay);
